@@ -49,6 +49,24 @@ function getStorage(): Storage | null {
   }
 }
 
+// 저장 공간을 쓸 수 없다는 표시. (저장된 값이 없는 null과 구분하려고 따로 둔다.)
+const UNAVAILABLE = Symbol("unavailable");
+type RawValue = string | null | typeof UNAVAILABLE;
+
+// 저장 공간에 들어 있는 원본 글자를 읽는다.
+function readRaw(): RawValue {
+  const storage = getStorage();
+  if (storage === null) {
+    return UNAVAILABLE;
+  }
+
+  try {
+    return storage.getItem(STORAGE_KEY);
+  } catch {
+    return UNAVAILABLE;
+  }
+}
+
 // 읽어 온 값이 이 앱의 저장 형식인지 큰 틀만 확인한다. (값의 범위 검사는 백업 가져오기 작업 몫)
 function looksLikeAppData(value: unknown): value is AppData {
   if (typeof value !== "object" || value === null) {
@@ -73,24 +91,11 @@ function looksLikeAppData(value: unknown): value is AppData {
   );
 }
 
-/**
- * 브라우저에 저장된 데이터를 불러온다.
- * 저장된 값이 깨져 있으면 status가 "corrupt"이고 원본은 지우지 않는다.
- * (호출하는 쪽은 "corrupt"일 때 빈 데이터를 그대로 저장해 원본을 덮어쓰지 않도록 주의한다.)
- */
-export function loadAppData(): LoadResult {
-  const storage = getStorage();
-  if (storage === null) {
+// 원본 글자를 불러오기 결과로 바꾼다.
+function toLoadResult(raw: RawValue): LoadResult {
+  if (raw === UNAVAILABLE) {
     return { status: "unavailable", data: createEmptyAppData() };
   }
-
-  let raw: string | null;
-  try {
-    raw = storage.getItem(STORAGE_KEY);
-  } catch {
-    return { status: "unavailable", data: createEmptyAppData() };
-  }
-
   if (raw === null) {
     return { status: "empty", data: createEmptyAppData() };
   }
@@ -108,8 +113,21 @@ export function loadAppData(): LoadResult {
 }
 
 /**
+ * 브라우저에 저장된 데이터를 불러온다.
+ * 저장된 값이 깨져 있으면 status가 "corrupt"이고 원본은 지우지 않는다.
+ * (호출하는 쪽은 "corrupt"일 때 빈 데이터를 그대로 저장해 원본을 덮어쓰지 않도록 주의한다.)
+ */
+export function loadAppData(): LoadResult {
+  return toLoadResult(readRaw());
+}
+
+// 저장이 일어났을 때 화면에 알려 주기 위한 구독자 목록
+const listeners = new Set<() => void>();
+
+/**
  * 데이터를 브라우저에 저장한다.
  * 저장 공간을 쓸 수 없거나 용량이 모자라 실패하면 이유를 돌려준다.
+ * 저장에 성공하면 이 데이터를 보고 있는 화면들이 새 값으로 다시 그려지도록 알린다.
  */
 export function saveAppData(data: AppData): SaveResult {
   const storage = getStorage();
@@ -119,8 +137,49 @@ export function saveAppData(data: AppData): SaveResult {
 
   try {
     storage.setItem(STORAGE_KEY, JSON.stringify(data));
-    return { ok: true };
   } catch {
     return { ok: false, reason: "failed" };
   }
+
+  listeners.forEach((listener) => listener());
+  return { ok: true };
+}
+
+// ---- 화면이 저장 공간의 변화를 따라가게 하는 도우미 (React의 useSyncExternalStore용) ----
+
+/**
+ * 저장 값이 바뀔 때(이 화면에서 저장하거나 다른 탭에서 바뀔 때) 알림을 받는다.
+ * 돌려주는 함수를 부르면 알림을 끊는다.
+ */
+export function subscribeAppData(listener: () => void): () => void {
+  listeners.add(listener);
+  if (typeof window !== "undefined") {
+    window.addEventListener("storage", listener);
+  }
+
+  return () => {
+    listeners.delete(listener);
+    if (typeof window !== "undefined") {
+      window.removeEventListener("storage", listener);
+    }
+  };
+}
+
+// 같은 원본이면 같은 결과 객체를 돌려주기 위한 보관 값 (React가 불필요하게 다시 그리지 않도록)
+let snapshotRaw: RawValue | undefined;
+let snapshotResult: LoadResult | null = null;
+
+/** 지금 저장된 데이터를 돌려준다. 저장된 값이 그대로면 항상 같은 객체를 돌려준다. */
+export function getAppDataSnapshot(): LoadResult {
+  const raw = readRaw();
+  if (snapshotResult === null || raw !== snapshotRaw) {
+    snapshotRaw = raw;
+    snapshotResult = toLoadResult(raw);
+  }
+  return snapshotResult;
+}
+
+/** 서버에서 그려질 때는 저장 공간을 읽을 수 없으므로 "아직 모름(null)"을 돌려준다. */
+export function getServerAppDataSnapshot(): null {
+  return null;
 }
