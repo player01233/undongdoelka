@@ -3,10 +3,13 @@
 // Design Ref: §3.4 — 기록 목록 영역: 가장 최근 1건만 수정·삭제할 수 있다.
 // 수정할 때 "특이 상황"을 켜고 끌 수 있고, 저장 당시 판정과 날짜는 그대로 둔다. 삭제는 1건씩 반복할 수 있다.
 // 15분 이상 차이 확인은 수정 중인 기록을 뺀 평균과 비교한다. (확인 창은 화면 안의 상자로 만든다.)
-// 이번 작업은 가장 최근 1건만 보여 준다. 전체 목록과 요약은 13번 작업에서 채운다.
+// Design Ref: §3.4 — 맨 위에 이번 주(월~일) 운동 횟수와 제시간 복귀 비율(앱이 "된다"고 판정한 기록 10건부터)을 보여 주고,
+// 기록은 최신순(날짜 늦은 순, 같으면 저장 시각 늦은 순)으로 보여 준다. 수정·삭제는 가장 최근 1건에만 있다.
 import { useState, useSyncExternalStore, type FormEvent } from "react";
+import { getClockSnapshot, getServerClockSnapshot, subscribeClock, toDateText } from "@/lib/clock";
 import { selectDurations } from "@/lib/estimate";
-import { deleteLatestRecord, editLatestRecord, getLatestRecord } from "@/lib/records";
+import { deleteLatestRecord, editLatestRecord, getLatestRecord, sortRecentFirst } from "@/lib/records";
+import { calcReturnRate, countThisWeek, MIN_OK_RECORDS_FOR_RATE } from "@/lib/stats";
 import {
   getAppDataSnapshot,
   getServerAppDataSnapshot,
@@ -59,6 +62,7 @@ interface EditState {
 
 export default function RecordList() {
   const stored = useSyncExternalStore(subscribeAppData, getAppDataSnapshot, getServerAppDataSnapshot);
+  const minute = useSyncExternalStore(subscribeClock, getClockSnapshot, getServerClockSnapshot);
 
   const [edit, setEdit] = useState<EditState | null>(null);
   const [errors, setErrors] = useState<Partial<Record<FieldKey, string>>>({});
@@ -66,12 +70,16 @@ export default function RecordList() {
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [result, setResult] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  if (stored === null) {
+  if (stored === null || minute === null) {
     return <p className="mt-4 text-sm text-foreground/60">불러오는 중...</p>;
   }
 
   const canSave = stored.status === "ok" || stored.status === "empty";
   const latest: WorkoutRecord | undefined = getLatestRecord(stored.data.records);
+  // 수정·삭제가 없는 이전 기록들 (최신순)
+  const older = sortRecentFirst(stored.data.records).slice(1);
+  const weekCount = countThisWeek(stored.data.records, toDateText(new Date(minute * 60000)));
+  const returnRate = calcReturnRate(stored.data.records);
   // 수정 상자는 지금 가장 최근 기록을 고치고 있을 때만 보여 준다.
   const editing = latest !== undefined && edit !== null && edit.id === latest.id ? edit : null;
 
@@ -180,6 +188,24 @@ export default function RecordList() {
 
   return (
     <div className="mt-4">
+      <p className="rounded-lg bg-foreground/5 px-4 py-3 text-sm">
+        이번 주 운동 <strong>{weekCount}회</strong>
+        {returnRate !== null && (
+          <>
+            {" "}· 제시간 복귀 <strong>{returnRate.percent}%</strong>{" "}
+            <span className="text-xs text-foreground/60">
+              (&quot;된다&quot; 판정 {returnRate.okCount}건 중 {returnRate.onTimeCount}건)
+            </span>
+          </>
+        )}
+      </p>
+      {returnRate === null && (
+        <p className="mt-1 text-xs text-foreground/60">
+          제시간 복귀 비율은 앱이 &quot;된다&quot;고 판정한 기록이 {MIN_OK_RECORDS_FOR_RATE}건 이상 쌓이면 보여 드려요.
+        </p>
+      )}
+
+      <div className="mt-4" />
       {latest === undefined ? (
         <p className="text-sm text-foreground/60">아직 저장한 기록이 없어요.</p>
       ) : (
@@ -357,6 +383,28 @@ export default function RecordList() {
             </form>
           )}
         </div>
+      )}
+
+      {older.length > 0 && (
+        <>
+          <h3 className="mt-6 text-sm font-semibold">이전 기록</h3>
+          <ul className="mt-2 divide-y divide-foreground/10 rounded-lg border border-foreground/15 text-sm">
+            {older.map((record) => (
+              <li key={record.id} className="px-3 py-2">
+                <p className="font-medium">
+                  {record.date}
+                  {record.special && (
+                    <span className="ml-2 rounded bg-foreground/10 px-1.5 py-0.5 text-xs font-normal">특이 상황</span>
+                  )}
+                </p>
+                <p className="mt-0.5 text-foreground/80">
+                  {record.durations.travelTo}·{record.durations.changing}·{record.durations.shower}·{record.durations.travelBack}분
+                  {" "}· 복귀 {record.returnedOnTime ? "예" : "아니오"} · 판정 {VERDICT_LABEL[record.verdict]}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </>
       )}
 
       <p
