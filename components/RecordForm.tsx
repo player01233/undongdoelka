@@ -1,10 +1,12 @@
 "use client";
 
 // Design Ref: §3.4 — 기록 입력: 가는 이동·환복·샤워·오는 이동(분) 4칸 + 제시간(수업 10분 전) 복귀 예/아니오, 날짜는 오늘로 자동 입력.
-// Design Ref: §4.2 — 범위 검사(정수, 0~120, 0분 허용) 후, 넘어온 판정 번호의 판정을 붙여 저장한다.
-// 이번 작업은 입력과 저장까지만 만든다. 평소와 15분 이상 차이 확인(11번), 목록·수정·삭제(12·13번)는 이후 작업이다.
+// Design Ref: §4.2 — 범위 검사(정수, 0~120, 0분 허용) 후, 평소와 15분 이상 차이 나면 확인하고, 넘어온 판정 번호의 판정을 붙여 저장한다.
+// 확인 창은 브라우저 기본 창(confirm)이 환경에 따라 뜨지 않아서 화면 안의 안내 상자로 만든다.
+// 목록·수정·삭제(12·13번)는 이후 작업이다.
 import { useState, useSyncExternalStore, type FormEvent } from "react";
 import { getClockSnapshot, getServerClockSnapshot, subscribeClock, toDateText } from "@/lib/clock";
+import { selectDurations } from "@/lib/estimate";
 import { createId } from "@/lib/id";
 import { attachJudgement } from "@/lib/judgement";
 import {
@@ -15,7 +17,12 @@ import {
   subscribeAppData,
 } from "@/lib/storage";
 import { weekdayOfDate } from "@/lib/time";
-import { parseDurationMinutes } from "@/lib/validate";
+import {
+  findUnusualDurations,
+  parseDurationMinutes,
+  UNUSUAL_DIFF_MINUTES,
+  type UnusualDuration,
+} from "@/lib/validate";
 import type { Durations } from "@/types";
 
 const FIELDS = [
@@ -30,6 +37,19 @@ type FieldTexts = Record<FieldKey, string>;
 
 const EMPTY_TEXTS: FieldTexts = { travelTo: "", changing: "", shower: "", travelBack: "" };
 const VERDICT_LABEL = { ok: "된다", no: "안 된다", none: "판정 안 함" } as const;
+const FIELD_LABEL: Record<FieldKey, string> = {
+  travelTo: "가는 이동",
+  changing: "환복",
+  shower: "샤워",
+  travelBack: "오는 이동",
+};
+
+// 확인 상자를 기다리는 기록: 검사를 통과한 값과 평소와 많이 다른 칸들
+interface PendingRecord {
+  durations: Durations;
+  returned: boolean;
+  unusual: UnusualDuration[];
+}
 
 // 주소의 "?judgement=번호"를 읽는다. 화면이 뜬 뒤(클라이언트 쪽)에서만 읽고, 서버에서는 "아직 모름"이다.
 function subscribeLocation(listener: () => void): () => void {
@@ -52,6 +72,7 @@ export default function RecordForm() {
   const [texts, setTexts] = useState<FieldTexts>(EMPTY_TEXTS);
   const [returned, setReturned] = useState<boolean | null>(null); // 미선택으로 시작
   const [errors, setErrors] = useState<Partial<Record<FieldKey | "date" | "returned", string>>>({});
+  const [pending, setPending] = useState<PendingRecord | null>(null);
   const [result, setResult] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   if (stored === null || minute === null || search === null) {
@@ -72,12 +93,57 @@ export default function RecordForm() {
   // 지금 날짜로 저장하면 어떤 판정이 붙는지 미리 알려 준다.
   const preview = attachJudgement(stored.data.judgements, judgementId, date);
 
+  // 입력이 바뀌면 이전 결과 메시지와 확인 상자는 더 이상 맞지 않으므로 지운다.
   function clearMessages() {
     setResult(null);
+    setPending(null);
+  }
+
+  // 검사를 통과한 값을 저장한다. special이 true면 "특이 상황"으로 표시해 평균에서 뺀다.
+  // 저장 직전에 다시 읽어서, 일정·초기값은 그대로 두고 기록과 판정만 바꾼다.
+  // 읽을 수 없거나 깨진 상태에서는 원본을 덮어쓰지 않도록 저장하지 않는다.
+  function save(durations: Durations, returnedOnTime: boolean, special: boolean) {
+    setPending(null);
+    const latest = loadAppData();
+    if (latest.status !== "ok" && latest.status !== "empty") {
+      setResult({ type: "error", text: "저장이 되지 않았어요. 저장 공간을 확인해 주세요." });
+      return;
+    }
+
+    const attached = attachJudgement(latest.data.judgements, judgementId, date);
+    const saved = saveAppData({
+      ...latest.data,
+      records: [
+        ...latest.data.records,
+        {
+          id: createId(),
+          date,
+          durations,
+          returnedOnTime,
+          verdict: attached.verdict,
+          special,
+          createdAt: new Date().toISOString(),
+        },
+      ],
+      judgements: attached.judgements,
+    });
+
+    if (saved.ok) {
+      setTexts(EMPTY_TEXTS);
+      setReturned(null);
+      setErrors({});
+      setResult({
+        type: "success",
+        text: `${special ? "특이 상황으로 " : ""}저장했어요. (당시 판정: ${VERDICT_LABEL[attached.verdict]})`,
+      });
+    } else {
+      setResult({ type: "error", text: "저장이 되지 않았어요. 브라우저 저장 공간이 가득 찼거나 막혀 있을 수 있어요." });
+    }
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setPending(null);
 
     const nextErrors: typeof errors = {};
     const parsed: Partial<Durations> = {};
@@ -101,40 +167,24 @@ export default function RecordForm() {
       return;
     }
 
-    // 저장 직전에 다시 읽어서, 일정·초기값은 그대로 두고 기록과 판정만 바꾼다.
-    // 읽을 수 없거나 깨진 상태에서는 원본을 덮어쓰지 않도록 저장하지 않는다.
+    const durations = parsed as Durations;
     const latest = loadAppData();
     if (latest.status !== "ok" && latest.status !== "empty") {
       setResult({ type: "error", text: "저장이 되지 않았어요. 저장 공간을 확인해 주세요." });
       return;
     }
 
-    const attached = attachJudgement(latest.data.judgements, judgementId, date);
-    const saved = saveAppData({
-      ...latest.data,
-      records: [
-        ...latest.data.records,
-        {
-          id: createId(),
-          date,
-          durations: parsed as Durations,
-          returnedOnTime: returned,
-          verdict: attached.verdict,
-          special: false,
-          createdAt: new Date().toISOString(),
-        },
-      ],
-      judgements: attached.judgements,
-    });
-
-    if (saved.ok) {
-      setTexts(EMPTY_TEXTS);
-      setReturned(null);
-      setErrors({});
-      setResult({ type: "success", text: `저장했어요. (당시 판정: ${VERDICT_LABEL[attached.verdict]})` });
-    } else {
-      setResult({ type: "error", text: "저장이 되지 않았어요. 브라우저 저장 공간이 가득 찼거나 막혀 있을 수 있어요." });
+    // 평소 값(최근 평균, 평균에 쓸 기록이 없으면 초기값)과 15분 이상 차이 나는 칸이 있으면 저장 전에 확인한다.
+    // 평소 값을 정할 수 없으면(기록도 초기값도 없음) 비교하지 않는다.
+    const usual = selectDurations(latest.data.records, latest.data.defaults).durations;
+    const unusual = usual === null ? [] : findUnusualDurations(durations, usual);
+    if (unusual.length > 0) {
+      setResult(null);
+      setPending({ durations, returned, unusual });
+      return;
     }
+
+    save(durations, returned, false);
   }
 
   return (
@@ -229,6 +279,43 @@ export default function RecordForm() {
             ? "이 날짜에 연결할 수 있는 판정이 없어서 '판정 안 함'으로 저장돼요."
             : `홈에서 확인한 판정(${VERDICT_LABEL[preview.verdict]})이 이 기록에 함께 저장돼요.`}
         </p>
+      )}
+
+      {pending !== null && (
+        <div role="alertdialog" aria-label="평소와 다른 값 확인" className="mt-5 rounded-lg border border-foreground/30 p-4 text-sm">
+          <ul className="space-y-1">
+            {pending.unusual.map((item) => (
+              <li key={item.key}>
+                {FIELD_LABEL[item.key]} {item.input}분은 평소({item.usual}분)와 {UNUSUAL_DIFF_MINUTES}분 이상 차이 나요. 맞나요?
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => setPending(null)}
+              className="rounded-lg border border-foreground/20 px-3 py-1.5 text-sm"
+            >
+              다시 입력
+            </button>
+            <button
+              type="button"
+              disabled={!canSave}
+              onClick={() => save(pending.durations, pending.returned, false)}
+              className="rounded-lg bg-foreground px-3 py-1.5 text-sm font-medium text-background disabled:opacity-40"
+            >
+              맞아요, 그대로 저장
+            </button>
+            <button
+              type="button"
+              disabled={!canSave}
+              onClick={() => save(pending.durations, pending.returned, true)}
+              className="rounded-lg border border-foreground/20 px-3 py-1.5 text-sm disabled:opacity-40"
+            >
+              특이 상황이라 평균에서 제외하고 저장
+            </button>
+          </div>
+        </div>
       )}
 
       <div className="mt-5 flex items-center gap-3">

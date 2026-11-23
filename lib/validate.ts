@@ -1,7 +1,7 @@
 // Design Ref: §7 — 입력값 검사. 화면과 무관한 순수 함수라서 숫자 예시만으로 맞는지 확인할 수 있다.
 // 이동·환복·샤워·오는 이동 시간(분) 검사와 수업 일정 검사를 담았다. 나머지 검사는 해당 작업에서 이 파일에 추가한다.
 import { toMinutes, weekdayOfDate } from "@/lib/time";
-import type { ClassItem, Weekday } from "@/types";
+import type { ClassItem, Durations, Weekday } from "@/types";
 
 // PRD 5② — 이동·환복·샤워·오는 이동은 0~120분의 정수만 받는다. (0분은 "생략한 날"이라 허용)
 export const MIN_DURATION_MINUTES = 0;
@@ -217,4 +217,26 @@ export function validateDayRows(rows: { start: string; end: string }[]): DayRows
     }
   }
   return null;
+}
+
+// ---- 평소와 많이 다른 값 확인 (Design §3.4, §4.2) ----
+
+// 평소 값과 이만큼(분) 이상 차이 나면 저장 전에 "맞나요?"라고 묻는다.
+export const UNUSUAL_DIFF_MINUTES = 15;
+
+export interface UnusualDuration {
+  key: keyof Durations;
+  input: number; // 방금 입력한 값
+  usual: number; // 평소 값(최근 평균, 평균에 쓸 기록이 없으면 초기값)
+}
+
+/**
+ * 네 칸 중 평소 값과 15분 이상 차이 나는 칸을 모두 찾는다. (14분 차이는 통과, 15분 차이부터 해당)
+ * 평소 값은 호출하는 쪽이 정한다. 수정 중인 기록이 있으면 그 기록을 뺀 평균을 넘겨야 한다.
+ */
+export function findUnusualDurations(input: Durations, usual: Durations): UnusualDuration[] {
+  const keys: (keyof Durations)[] = ["travelTo", "changing", "shower", "travelBack"];
+  return keys
+    .filter((key) => Math.abs(input[key] - usual[key]) >= UNUSUAL_DIFF_MINUTES)
+    .map((key) => ({ key, input: input[key], usual: usual[key] }));
 }
