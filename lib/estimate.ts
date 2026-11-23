@@ -56,3 +56,29 @@ export function judgeWorkout(
     possible: remainingMinutes >= RETURN_MARGIN_MINUTES,
   };
 }
+
+// 공강을 고르면 보여 주는 "최대 운동 시간"의 표시 상한(분). 운동 시간 입력 상한과 같다.
+export const MAX_WORKOUT_DISPLAY_MINUTES = 300;
+
+// 최대 운동 시간 결과: 운동할 시간이 있는지, 있으면 몇 분까지인지
+export type MaxWorkoutResult =
+  | { possible: true; minutes: number } // minutes는 1~300 (300보다 크면 300으로 줄여 표시)
+  | { possible: false };
+
+/**
+ * 최대 운동 시간 = 공강 길이 − (가는 이동 + 환복 + 샤워 + 오는 이동) − 10분
+ * 계산값이 1분보다 작으면 운동할 시간이 없고, 300분보다 크면 300분까지만 표시한다.
+ */
+export function calcMaxWorkoutMinutes(
+  gapMinutes: number,
+  durations: Durations,
+): MaxWorkoutResult {
+  const fixed =
+    durations.travelTo + durations.changing + durations.shower + durations.travelBack;
+  const raw = gapMinutes - fixed - RETURN_MARGIN_MINUTES;
+
+  if (raw < 1) {
+    return { possible: false };
+  }
+  return { possible: true, minutes: Math.min(raw, MAX_WORKOUT_DISPLAY_MINUTES) };
+}

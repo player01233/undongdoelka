@@ -11,6 +11,7 @@ import {
   saveAppData,
   subscribeAppData,
 } from "@/lib/storage";
+import { createId } from "@/lib/id";
 import { parseClassInput, type ClassInputErrors } from "@/lib/validate";
 import type { ClassItem, Weekday } from "@/types";
 
@@ -24,12 +25,6 @@ function todayText(): string {
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
   return `${now.getFullYear()}-${month}-${day}`;
-}
-
-function newId(): string {
-  return typeof crypto !== "undefined" && "randomUUID" in crypto
-    ? crypto.randomUUID()
-    : `class-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
 interface FormState {
@@ -119,7 +114,7 @@ export default function ClassForm() {
     const ok = writeClasses((list) =>
       wasEditing
         ? list.map((item) => (item.id === editingId ? { ...parsed.value, id: item.id } : item))
-        : [...list, { ...parsed.value, id: newId() }],
+        : [...list, { ...parsed.value, id: createId() }],
     );
     if (ok) {
       resetForm();

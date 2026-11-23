@@ -144,3 +144,35 @@ export function parseClassInput(
 
   return { ok: true, value };
 }
+
+// ---- 운동 시간 검사 ----
+
+// PRD 5② — 운동 시간은 1~300분의 정수만 받는다.
+export const MIN_WORKOUT_MINUTES = 1;
+export const MAX_WORKOUT_MINUTES = 300;
+
+/** 운동 시간 입력 칸의 글자를 분 단위 정수로 바꾼다. 규칙에 맞지 않으면 안내 문구를 돌려준다. */
+export function parseWorkoutMinutes(text: string): MinutesParseResult {
+  const trimmed = text.trim();
+
+  if (trimmed === "") {
+    return { ok: false, message: "운동 시간을 입력해 주세요." };
+  }
+  if (!/^-?\d+(\.\d+)?$/.test(trimmed)) {
+    return { ok: false, message: "숫자만 입력해 주세요." };
+  }
+
+  const value = Number(trimmed);
+
+  if (!Number.isInteger(value)) {
+    return { ok: false, message: "소수점 없이 정수로 입력해 주세요." };
+  }
+  if (value < MIN_WORKOUT_MINUTES) {
+    return { ok: false, message: `${MIN_WORKOUT_MINUTES}분 이상으로 입력해 주세요.` };
+  }
+  if (value > MAX_WORKOUT_MINUTES) {
+    return { ok: false, message: `${MAX_WORKOUT_MINUTES}분 이하로 입력해 주세요.` };
+  }
+
+  return { ok: true, value };
+}
