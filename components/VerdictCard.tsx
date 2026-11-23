@@ -1,6 +1,6 @@
 // Design Ref: §3.2 — 판정 결과("된다/안 된다")와 계산 근거 숫자, 운동 후 기록하기 버튼.
 import Link from "next/link";
-import { RETURN_MARGIN_MINUTES } from "@/lib/estimate";
+import { RETURN_MARGIN_MINUTES, type DurationsSource } from "@/lib/estimate";
 import type { Durations } from "@/types";
 
 // 확인하기를 눌렀을 때 만들어지는 결과 한 건
@@ -13,6 +13,7 @@ export interface VerdictResult {
   requiredMinutes: number;
   remainingMinutes: number;
   startedNow: boolean; // 지금부터 남은 시간으로 계산했는가
+  source: DurationsSource; // 값을 기록 평균에서 골랐는지 초기값에서 골랐는지
 }
 
 export default function VerdictCard({ result }: { result: VerdictResult }) {
@@ -49,7 +50,11 @@ export default function VerdictCard({ result }: { result: VerdictResult }) {
         </div>
       </dl>
 
-      <p className="mt-3 text-xs text-foreground/60">아직 기록이 없어 초기값으로 계산했어요.</p>
+      <p className="mt-3 text-xs text-foreground/60">
+        {result.source.kind === "records"
+          ? `최근 ${result.source.count}회 기록 평균으로 계산했어요.`
+          : "아직 평균에 쓸 기록이 없어 초기값으로 계산했어요."}
+      </p>
       {result.startedNow && (
         <p className="mt-1 text-xs text-foreground/60">지금부터 남은 시간으로 계산했어요.</p>
       )}

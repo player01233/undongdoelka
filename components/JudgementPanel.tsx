@@ -2,12 +2,12 @@
 
 // Design Ref: §3.2, §4.1 — 홈: 오늘의 공강 선택 → 운동 시간 입력 → "된다/안 된다" 판정과 계산 근거.
 // Design Ref: §10.3 — 저장 공간과 현재 시각은 화면이 뜬 뒤(클라이언트 쪽)에서만 읽는다.
-// 이 작업에서는 이동·환복·샤워·오는 이동 값으로 설정의 초기값만 쓴다. (최근 5회 평균은 10번 작업에서 더한다.)
+// 이동·환복·샤워·오는 이동 값은 최근 5회 기록 평균을 쓰고, 평균에 쓸 기록이 없을 때만 설정의 초기값을 쓴다.
 import Link from "next/link";
 import { useState, useSyncExternalStore, type FormEvent } from "react";
 import GapPicker from "@/components/GapPicker";
 import VerdictCard, { type VerdictResult } from "@/components/VerdictCard";
-import { calcMaxWorkoutMinutes, judgeWorkout } from "@/lib/estimate";
+import { calcMaxWorkoutMinutes, judgeWorkout, selectDurations } from "@/lib/estimate";
 import { getClockSnapshot, getServerClockSnapshot, subscribeClock, toDateText } from "@/lib/clock";
 import { createId } from "@/lib/id";
 import { addJudgement } from "@/lib/judgement";
@@ -51,7 +51,8 @@ export default function JudgementPanel() {
     return adjusted === null ? [] : [adjusted];
   });
   const selectedGap: Gap | undefined = gaps.find((gap) => gap.endMinutes === selectedEnd) ?? gaps[0];
-  const durations = data.defaults;
+  // 이동·환복·샤워·오는 이동 값: 기록이 있으면 최근 5회 평균, 평균에 쓸 기록이 없을 때만 초기값
+  const { durations, source } = selectDurations(data.records, data.defaults);
   const maxWorkout =
     selectedGap !== undefined && durations !== null
       ? calcMaxWorkoutMinutes(selectedGap.length, durations)
@@ -110,6 +111,7 @@ export default function JudgementPanel() {
       requiredMinutes: judged.requiredMinutes,
       remainingMinutes: judged.remainingMinutes,
       startedNow: selectedGap.startedNow,
+      source,
     });
   }
 

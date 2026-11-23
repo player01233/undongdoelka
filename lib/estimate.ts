@@ -1,6 +1,6 @@
 // Design Ref: §5.2 — "된다/안 된다" 판정에 쓰는 시간 계산 규칙.
 // 화면·저장과 무관한 순수 함수이며, 같은 입력이면 항상 같은 결과가 나온다.
-// (평균·초기값 고르기, 입력 범위 검사 등은 PLAN의 다른 작업 몫이라 여기서는 만들지 않는다.)
+// 쓸 값 고르기(최근 5회 평균·초기값)도 여기에 있다. 입력 범위 검사는 validate.ts 몫이다.
 import type { Durations } from "@/types";
 
 // 다음 수업 시작 10분 전까지 복귀해야 "된다"로 본다.
@@ -81,4 +81,57 @@ export function calcMaxWorkoutMinutes(
     return { possible: false };
   }
   return { possible: true, minutes: Math.min(raw, MAX_WORKOUT_DISPLAY_MINUTES) };
+}
+
+// ---- 쓸 값 고르기: 최근 5회 기록 평균 / 초기값 (Design §5.2, PRD 5②) ----
+
+// 평균에 쓰는 최근 기록 수
+export const RECENT_RECORD_COUNT = 5;
+
+// 어떤 근거로 값을 골랐는가: 기록 평균(몇 건) 또는 초기값
+export type DurationsSource = { kind: "records"; count: number } | { kind: "defaults" };
+
+export interface SelectedDurations {
+  durations: Durations | null; // 기록도 초기값도 없으면 null
+  source: DurationsSource;
+}
+
+// 기록에서 평균 계산에 필요한 부분만 (WorkoutRecord의 일부)
+export interface RecordForAverage {
+  date: string;
+  createdAt: string;
+  special: boolean;
+  durations: Durations;
+}
+
+const DURATION_KEYS = ["travelTo", "changing", "shower", "travelBack"] as const;
+
+/**
+ * 판정에 쓸 이동·환복·샤워·오는 이동 값을 정한다.
+ * - "최근"은 날짜가 늦은 순, 날짜가 같으면 저장 시각이 늦은 순이다. 그중 최근 5건을 본다.
+ * - "특이 상황" 기록은 평균에서 빼고, 항목마다 0분(생략한 날) 값도 그 항목 평균에서 뺀다. 평균의 소수점은 올림한다.
+ *   어떤 항목이 모두 0분이면 그 항목은 0분이다. (초기값을 쓰지 않는다.)
+ * - 평균에 쓸 기록이 하나도 없을 때(기록이 없거나 모두 특이 상황)만 초기값을 쓴다.
+ */
+export function selectDurations(
+  records: RecordForAverage[],
+  defaults: Durations | null,
+): SelectedDurations {
+  const recent = [...records]
+    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
+    .slice(0, RECENT_RECORD_COUNT)
+    .filter((record) => !record.special);
+
+  if (recent.length === 0) {
+    return { durations: defaults, source: { kind: "defaults" } };
+  }
+
+  const averaged = { travelTo: 0, changing: 0, shower: 0, travelBack: 0 };
+  for (const key of DURATION_KEYS) {
+    const values = recent.map((record) => record.durations[key]).filter((value) => value > 0);
+    averaged[key] =
+      values.length === 0 ? 0 : Math.ceil(values.reduce((sum, value) => sum + value, 0) / values.length);
+  }
+
+  return { durations: averaged, source: { kind: "records", count: recent.length } };
 }
