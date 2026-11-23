@@ -48,3 +48,10 @@ export function weekdayOfDate(date: string): Weekday | null {
   }
   return parsed.getDay() as Weekday;
 }
+
+/** 분 단위 숫자를 "HH:MM" 글자로 바꾼다. (예: 630 → "10:30") */
+export function toTimeText(minutes: number): string {
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return `${String(hours).padStart(2, "0")}:${String(rest).padStart(2, "0")}`;
+}
