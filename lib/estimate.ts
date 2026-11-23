@@ -1,6 +1,7 @@
 // Design Ref: §5.2 — "된다/안 된다" 판정에 쓰는 시간 계산 규칙.
 // 화면·저장과 무관한 순수 함수이며, 같은 입력이면 항상 같은 결과가 나온다.
 // 쓸 값 고르기(최근 5회 평균·초기값)도 여기에 있다. 입력 범위 검사는 validate.ts 몫이다.
+import { sortRecentFirst } from "@/lib/records";
 import type { Durations } from "@/types";
 
 // 다음 수업 시작 10분 전까지 복귀해야 "된다"로 본다.
@@ -117,8 +118,7 @@ export function selectDurations(
   records: RecordForAverage[],
   defaults: Durations | null,
 ): SelectedDurations {
-  const recent = [...records]
-    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt))
+  const recent = sortRecentFirst(records)
     .slice(0, RECENT_RECORD_COUNT)
     .filter((record) => !record.special);
 
