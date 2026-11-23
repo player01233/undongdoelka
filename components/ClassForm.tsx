@@ -54,6 +54,7 @@ export default function ClassForm() {
   );
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null); // 삭제 확인을 기다리는 수업
   const [errors, setErrors] = useState<ClassInputErrors>({});
   const [result, setResult] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
@@ -139,10 +140,10 @@ export default function ClassForm() {
     setResult(null);
   }
 
+  // 삭제는 두 단계로 한다: [삭제]를 누르면 그 줄에서 "삭제할까요?"를 묻고, [삭제 확인]을 눌러야 지운다.
+  // (브라우저 기본 확인 창은 환경에 따라 뜨지 않고 취소로 처리되는 경우가 있어 화면 안에서 묻는다.)
   function handleDelete(item: ClassItem) {
-    if (!window.confirm(`${describe(item)} 수업을 삭제할까요?`)) {
-      return;
-    }
+    setConfirmingId(null);
     if (writeClasses((list) => list.filter((other) => other.id !== item.id))) {
       if (editingId === item.id) {
         resetForm();
@@ -176,7 +177,7 @@ export default function ClassForm() {
       ) : (
         <ul className="mt-2 divide-y divide-foreground/10 rounded-lg border border-foreground/15">
           {weekly.map((item) => (
-            <ClassRow key={item.id} item={item} onEdit={startEdit} onDelete={handleDelete} />
+            <ClassRow key={item.id} item={item} confirming={confirmingId === item.id} onAsk={setConfirmingId} onEdit={startEdit} onDelete={handleDelete} />
           ))}
         </ul>
       )}
@@ -186,7 +187,7 @@ export default function ClassForm() {
           <h2 className="mt-6 text-base font-semibold">한 번만 있는 수업</h2>
           <ul className="mt-2 divide-y divide-foreground/10 rounded-lg border border-foreground/15">
             {once.map((item) => (
-              <ClassRow key={item.id} item={item} onEdit={startEdit} onDelete={handleDelete} />
+              <ClassRow key={item.id} item={item} confirming={confirmingId === item.id} onAsk={setConfirmingId} onEdit={startEdit} onDelete={handleDelete} />
             ))}
           </ul>
         </>
@@ -308,10 +309,14 @@ function describe(item: ClassItem): string {
 
 function ClassRow({
   item,
+  confirming,
+  onAsk,
   onEdit,
   onDelete,
 }: {
   item: ClassItem;
+  confirming: boolean;
+  onAsk: (id: string | null) => void;
   onEdit: (item: ClassItem) => void;
   onDelete: (item: ClassItem) => void;
 }) {
@@ -323,14 +328,26 @@ function ClassRow({
           <span className="ml-2 rounded bg-foreground/10 px-1.5 py-0.5 text-xs">한 번만</span>
         )}
       </span>
-      <span className="flex gap-2">
-        <button type="button" onClick={() => onEdit(item)} className="rounded border border-foreground/20 px-2 py-1 text-xs">
-          수정
-        </button>
-        <button type="button" onClick={() => onDelete(item)} className="rounded border border-foreground/20 px-2 py-1 text-xs">
-          삭제
-        </button>
-      </span>
+      {confirming ? (
+        <span className="flex items-center gap-2">
+          <span className="text-xs">삭제할까요?</span>
+          <button type="button" onClick={() => onDelete(item)} className="rounded bg-red-600 px-2 py-1 text-xs text-white">
+            삭제 확인
+          </button>
+          <button type="button" onClick={() => onAsk(null)} className="rounded border border-foreground/20 px-2 py-1 text-xs">
+            취소
+          </button>
+        </span>
+      ) : (
+        <span className="flex gap-2">
+          <button type="button" onClick={() => onEdit(item)} className="rounded border border-foreground/20 px-2 py-1 text-xs">
+            수정
+          </button>
+          <button type="button" onClick={() => onAsk(item.id)} className="rounded border border-foreground/20 px-2 py-1 text-xs">
+            삭제
+          </button>
+        </span>
+      )}
     </li>
   );
 }
