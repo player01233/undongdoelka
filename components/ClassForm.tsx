@@ -2,7 +2,7 @@
 
 // Design Ref: §3.3 — 일정 화면: 요일·시작·종료·매주 반복을 입력해 기본 일정으로 저장하고, 목록에서 수정·삭제한다.
 // Design Ref: §7 — 종료가 시작보다 늦어야 하고, 같은 날 수업이 겹치면 저장하지 않는다.
-// 이번 작업은 기본 일정까지만 만든다. "특정 날짜만 수정"은 8번 작업에서 채운다.
+// 기본 일정(매주·한 번만)만 다룬다. "특정 날짜만 수정"은 DayOverrideEditor가 맡는다.
 import { useState, useSyncExternalStore, type FormEvent } from "react";
 import {
   getAppDataSnapshot,

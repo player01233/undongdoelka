@@ -103,3 +103,39 @@ export function applyNow(gap: Gap, nowMinutes: number): Gap | null {
 export function formatGap(gap: Gap): string {
   return `${toTimeText(gap.startMinutes)}~${toTimeText(gap.endMinutes)}`;
 }
+
+// 그날만 수정 화면에서 고치는 수업 한 줄 (번호로 구분한다)
+export interface DayRow {
+  id: string;
+  start: string;
+  end: string;
+}
+
+/**
+ * 그날만 수정 화면에 보여 줄 그날의 수업 목록을 돌려준다.
+ * 이미 그날만 수정한 목록이 있으면 그것(hasOverride = true), 없으면 기본 일정을 복사한 것이다.
+ * 날짜가 올바르지 않으면 빈 목록을 돌려준다.
+ */
+export function getDayRows(
+  classes: ClassItem[],
+  overrides: DayOverride[],
+  date: string,
+): { rows: DayRow[]; hasOverride: boolean } {
+  const weekday = weekdayOfDate(date);
+  if (weekday === null) {
+    return { rows: [], hasOverride: false };
+  }
+
+  const override = overrides.find((item) => item.date === date);
+  const source =
+    override !== undefined
+      ? override.classes
+      : classes.filter((item) =>
+          item.repeatWeekly ? item.weekday === weekday : item.date === date,
+        );
+
+  const rows = source
+    .map(({ id, start, end }) => ({ id, start, end }))
+    .sort((a, b) => a.start.localeCompare(b.start));
+  return { rows, hasOverride: override !== undefined };
+}

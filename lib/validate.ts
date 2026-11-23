@@ -176,3 +176,45 @@ export function parseWorkoutMinutes(text: string): MinutesParseResult {
 
   return { ok: true, value };
 }
+
+// ---- 그날만 수정한 수업 목록 검사 (Design §3.3, §7) ----
+
+export interface DayRowsErrors {
+  rows: (string | undefined)[]; // 줄마다 시각 오류 문구 (오류가 없으면 undefined)
+  overlap?: string; // 줄끼리 시간이 겹칠 때
+}
+
+/**
+ * 그날의 수업 목록 전체를 검사한다. 각 줄은 시각 형식이 맞고 종료가 시작보다 늦어야 하며,
+ * 줄끼리 시간이 겹치면 저장할 수 없다. (맞닿기만 하는 경우는 겹침이 아니다.) 빈 목록은 허용한다.
+ */
+export function validateDayRows(rows: { start: string; end: string }[]): DayRowsErrors | null {
+  const rowErrors: (string | undefined)[] = rows.map((row) => {
+    const start = toMinutes(row.start);
+    const end = toMinutes(row.end);
+    if (start === null || end === null) {
+      return "시작과 종료 시각을 입력해 주세요.";
+    }
+    if (end <= start) {
+      return "종료는 시작보다 늦어야 해요.";
+    }
+    return undefined;
+  });
+
+  if (rowErrors.some((message) => message !== undefined)) {
+    return { rows: rowErrors };
+  }
+
+  const ranges = rows.map((row) => ({
+    start: toMinutes(row.start) as number,
+    end: toMinutes(row.end) as number,
+  }));
+  for (let i = 0; i < ranges.length; i += 1) {
+    for (let j = i + 1; j < ranges.length; j += 1) {
+      if (ranges[i].start < ranges[j].end && ranges[j].start < ranges[i].end) {
+        return { rows: rowErrors, overlap: "다른 수업과 시간이 겹쳐요." };
+      }
+    }
+  }
+  return null;
+}

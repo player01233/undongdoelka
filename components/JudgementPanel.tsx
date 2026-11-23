@@ -8,6 +8,7 @@ import { useState, useSyncExternalStore, type FormEvent } from "react";
 import GapPicker from "@/components/GapPicker";
 import VerdictCard, { type VerdictResult } from "@/components/VerdictCard";
 import { calcMaxWorkoutMinutes, judgeWorkout } from "@/lib/estimate";
+import { getClockSnapshot, getServerClockSnapshot, subscribeClock, toDateText } from "@/lib/clock";
 import { createId } from "@/lib/id";
 import { addJudgement } from "@/lib/judgement";
 import { applyNow, calcGaps, getClassesOnDate, type Gap } from "@/lib/schedule";
@@ -21,25 +22,6 @@ import {
 import { parseWorkoutMinutes } from "@/lib/validate";
 
 const WEEKDAY_NAMES = ["일", "월", "화", "수", "목", "금", "토"];
-
-// 현재 시각을 "분" 단위로 알려 주는 구독. 렌더 중에 시계를 직접 읽지 않으려고 외부 값으로 다룬다.
-function subscribeClock(listener: () => void): () => void {
-  const timer = setInterval(listener, 15000);
-  return () => clearInterval(timer);
-}
-function getClockSnapshot(): number {
-  return Math.floor(Date.now() / 60000);
-}
-function getServerClockSnapshot(): null {
-  return null;
-}
-
-// 로컬 날짜를 "YYYY-MM-DD"로 만든다. (toISOString은 하루가 밀릴 수 있어 쓰지 않는다.)
-function toDateText(date: Date): string {
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${date.getFullYear()}-${month}-${day}`;
-}
 
 export default function JudgementPanel() {
   const stored = useSyncExternalStore(subscribeAppData, getAppDataSnapshot, getServerAppDataSnapshot);
@@ -137,7 +119,7 @@ export default function JudgementPanel() {
         <p className="text-sm font-medium">
           오늘 {now.getMonth() + 1}월 {now.getDate()}일 ({WEEKDAY_NAMES[now.getDay()]})
         </p>
-        <Link href="/schedule" className="rounded-lg border border-foreground/20 px-3 py-1.5 text-xs">
+        <Link href="/schedule#day-override" className="rounded-lg border border-foreground/20 px-3 py-1.5 text-xs">
           오늘 일정 바꾸기
         </Link>
       </div>
