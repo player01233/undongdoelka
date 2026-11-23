@@ -34,3 +34,27 @@ export function addJudgement(
   });
   return [...kept, created];
 }
+
+/**
+ * 기록에 붙일 판정을 고른다. (Design §4.2)
+ * 판정 번호가 있고, 아직 어떤 기록에도 붙지 않았고(used가 false), 판정 날짜가 기록 날짜와 같을 때만 붙인다.
+ * 그렇지 않으면 "판정 안 함"(none)이고 판정 목록은 그대로다.
+ * 붙인 판정은 used를 true로 바꾼 새 목록을 함께 돌려준다. (같은 판정으로 두 번째 기록을 저장하면 "판정 안 함")
+ */
+export function attachJudgement(
+  judgements: Judgement[],
+  judgementId: string | null,
+  recordDate: string,
+): { verdict: "ok" | "no" | "none"; judgements: Judgement[] } {
+  const target =
+    judgementId === null ? undefined : judgements.find((item) => item.id === judgementId);
+
+  if (target === undefined || target.used || target.date !== recordDate) {
+    return { verdict: "none", judgements };
+  }
+
+  return {
+    verdict: target.verdict,
+    judgements: judgements.map((item) => (item.id === target.id ? { ...item, used: true } : item)),
+  };
+}
