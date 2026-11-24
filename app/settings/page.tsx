@@ -1,5 +1,5 @@
 // Design Ref: §3.5 — 설정: 이동·환복·샤워 초기값 입력, 내보내기·가져오기
-// 이번 작업은 초기값 입력까지만 만든다. 내보내기·가져오기는 이후 작업에서 채운다.
+import BackupPanel from "@/components/BackupPanel";
 import DefaultsForm from "@/components/DefaultsForm";
 
 export default function SettingsPage() {
@@ -18,9 +18,7 @@ export default function SettingsPage() {
       <DefaultsForm />
 
       <h2 className="mt-10 text-base font-semibold">백업</h2>
-      <p className="mt-2 rounded-lg border border-foreground/15 p-4 text-sm text-foreground/70">
-        준비 중입니다. 내보내기·가져오기는 다음 작업에서 만들어집니다.
-      </p>
+      <BackupPanel />
     </section>
   );
 }
