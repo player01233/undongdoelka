@@ -11,7 +11,8 @@
 
 ## 배포 주소
 
-- 사이트: (배포 후 채워집니다)
+- 사이트: https://undongdoelka.vercel.app
+- 저장소: https://github.com/player01233/undongdoelka
 
 ## 주요 기능
 
