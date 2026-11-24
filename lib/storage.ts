@@ -1,6 +1,7 @@
 // Design Ref: §6.2 — 일정·기록·초기값은 브라우저 안의 작은 저장 공간(localStorage)에 하나의 묶음으로 저장한다.
 // Design Ref: §10.3 — 저장 공간은 화면이 뜬 뒤(클라이언트 쪽)에서만 읽는다. 서버에서 그려질 때는 읽지 않는다.
-// 이 파일은 저장과 불러오기만 맡고, 값의 범위 검사나 백업 파일 처리는 다른 작업 몫이다.
+// 이 파일은 저장과 불러오기를 맡는다. 불러올 때는 lib/backup.ts의 값 확인(readAppData)을 함께 쓴다.
+import { readAppData } from "@/lib/backup";
 import type { AppData } from "@/types";
 
 // 저장 공간에 데이터를 넣어 두는 이름표
@@ -102,8 +103,13 @@ function toLoadResult(raw: RawValue): LoadResult {
 
   try {
     const parsed: unknown = JSON.parse(raw);
+    // 겉모양(버전·큰 틀)을 보고, 안쪽 항목의 형식과 값의 범위까지 확인해야 "ok"로 쓴다.
+    // 값이 바뀌었거나 옛 형식이면 "corrupt"가 되고, 원본은 지우지 않는다.
     if (looksLikeAppData(parsed)) {
-      return { status: "ok", data: parsed };
+      const read = readAppData(parsed, false);
+      if (read.ok) {
+        return { status: "ok", data: read.data };
+      }
     }
   } catch {
     // JSON이 깨진 경우: 아래의 corrupt로 처리한다.

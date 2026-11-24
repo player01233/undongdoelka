@@ -2,7 +2,12 @@
 // 가져오기 파일은 값의 형식과 범위를 모두 확인한 뒤에만 앱 데이터로 바꾼다. 확인을 통과한 값만 새로 만들어 돌려주므로
 // 파일에 끼어 있는 알 수 없는 항목은 버려진다.
 import { toMinutes, weekdayOfDate } from "@/lib/time";
-import { MAX_DURATION_MINUTES, MIN_DURATION_MINUTES } from "@/lib/validate";
+import {
+  MAX_DURATION_MINUTES,
+  MIN_DURATION_MINUTES,
+  parseClassInput,
+  validateDayRows,
+} from "@/lib/validate";
 import type { AppData, ClassItem, DayOverride, Durations, Judgement, WorkoutRecord } from "@/types";
 
 // 파일 안에 적는 앱 이름 표시. 다른 앱의 파일을 거르는 데 쓴다.
@@ -11,8 +16,11 @@ export const BACKUP_APP_NAME = "undongdoelka";
 // 마지막 내보내기로부터 이만큼 지나면 백업 안내를 보여 준다. (PRD 5②)
 export const BACKUP_REMINDER_DAYS = 7;
 
+// 가져올 파일의 최대 크기(바이트). 화면에서는 읽기 전에 이 크기를 먼저 확인한다.
+export const MAX_BACKUP_FILE_BYTES = 5_000_000;
+
 // 이보다 큰 파일은 백업 파일로 보지 않는다. (실수로 큰 파일을 고른 경우를 막는다.)
-const MAX_BACKUP_FILE_CHARS = 5_000_000;
+const MAX_BACKUP_FILE_CHARS = MAX_BACKUP_FILE_BYTES;
 
 // 내보내기 파일의 모양
 export interface BackupFile {
@@ -218,35 +226,95 @@ export function parseBackup(text: string): BackupParseResult {
     return invalid("내보낸 시각");
   }
 
-  const data = asObject(file.data);
-  if (data === null) {
-    return invalid("데이터");
-  }
-
-  const classes = readList(data.classes, readClass);
-  if (classes === null) {
-    return invalid("일정");
-  }
-  const overrides = readList(data.overrides, readOverride);
-  if (overrides === null) {
-    return invalid("그날만 수정한 일정");
-  }
-  const defaults = data.defaults === null ? null : readDurations(data.defaults);
-  if (data.defaults !== null && defaults === null) {
-    return invalid("초기값");
-  }
-  const records = readList(data.records, readRecord);
-  if (records === null) {
-    return invalid("기록");
-  }
-  const judgements = readList(data.judgements, readJudgement);
-  if (judgements === null) {
-    return invalid("판정");
+  // 가져오기는 엄격하게(번호 중복·수업 겹침까지) 확인한다.
+  const read = readAppData(file.data, true);
+  if (!read.ok) {
+    return invalid(read.section);
   }
 
   return {
     ok: true,
     exportedAt: file.exportedAt,
+    data: { ...read.data, lastExportedAt: file.exportedAt },
+  };
+}
+
+// 같은 번호가 두 번 나오면 true
+function hasDuplicateIds(items: { id: string }[]): boolean {
+  return new Set(items.map((item) => item.id)).size !== items.length;
+}
+
+/**
+ * 앱 데이터 한 묶음의 모든 항목을 확인해 새로 만들어 돌려준다. (알 수 없는 항목은 버려진다.)
+ * 틀린 부분이 있으면 어느 부분인지(일정·기록 등)를 돌려준다.
+ * - strict가 false이면 형식과 값의 범위만 본다. 브라우저 저장 공간을 읽을 때 쓴다.
+ *   (이미 쓰던 데이터를 괜히 "읽을 수 없음"으로 막지 않으려고 번호·겹침은 보지 않는다.)
+ * - strict가 true이면 같은 번호의 중복, 같은 날 수업 시간 겹침도 거부한다. 가져오기 파일에 쓴다.
+ */
+export function readAppData(
+  raw: unknown,
+  strict: boolean,
+): { ok: true; data: AppData } | { ok: false; section: string } {
+  const data = asObject(raw);
+  if (data === null) {
+    return { ok: false, section: "데이터" };
+  }
+
+  const classes = readList(data.classes, readClass);
+  if (classes === null) {
+    return { ok: false, section: "일정" };
+  }
+  const overrides = readList(data.overrides, readOverride);
+  if (overrides === null) {
+    return { ok: false, section: "그날만 수정한 일정" };
+  }
+  const defaults = data.defaults === null ? null : readDurations(data.defaults);
+  if (data.defaults !== null && defaults === null) {
+    return { ok: false, section: "초기값" };
+  }
+  const records = readList(data.records, readRecord);
+  if (records === null) {
+    return { ok: false, section: "기록" };
+  }
+  const judgements = readList(data.judgements, readJudgement);
+  if (judgements === null) {
+    return { ok: false, section: "판정" };
+  }
+  // 가져오기 파일에 이 항목이 없어도 괜찮다. (어차피 파일에 적힌 내보낸 시각으로 바뀐다.)
+  const lastExportedAt = data.lastExportedAt === undefined && strict ? null : data.lastExportedAt;
+  if (lastExportedAt !== null && typeof lastExportedAt !== "string") {
+    return { ok: false, section: "마지막 내보낸 시각" };
+  }
+
+  if (strict) {
+    if (hasDuplicateIds(classes) || hasDuplicateIds(records) || hasDuplicateIds(judgements)) {
+      return { ok: false, section: "번호(중복)" };
+    }
+    // 수업은 하나씩 더해 가며 같은 날 겹치는지 본다. (화면에서 입력할 때와 같은 규칙)
+    for (let i = 0; i < classes.length; i += 1) {
+      const item = classes[i];
+      const checked = parseClassInput(
+        {
+          weekday: item.weekday ?? 1,
+          start: item.start,
+          end: item.end,
+          repeatWeekly: item.repeatWeekly,
+          date: item.date ?? "",
+        },
+        classes.slice(0, i),
+        null,
+      );
+      if (!checked.ok) {
+        return { ok: false, section: "일정(시간이 겹침)" };
+      }
+    }
+    if (overrides.some((item) => validateDayRows(item.classes) !== null || hasDuplicateIds(item.classes))) {
+      return { ok: false, section: "그날만 수정한 일정(번호 중복 또는 시간 겹침)" };
+    }
+  }
+
+  return {
+    ok: true,
     data: {
       version: 1,
       classes,
@@ -254,7 +322,7 @@ export function parseBackup(text: string): BackupParseResult {
       defaults,
       records,
       judgements,
-      lastExportedAt: file.exportedAt,
+      lastExportedAt,
     },
   };
 }

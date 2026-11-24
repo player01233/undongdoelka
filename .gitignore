@@ -45,3 +45,7 @@ next-env.d.ts
 
 # 앱에서 내보낸 백업 파일 (수업 일정이 들어 있어 커밋 금지)
 undongdoelka-backup-*.json
+
+# 도구가 만드는 작업 기록·설정 폴더 (공유할 의도 없음, 커밋 금지)
+/.bkit/
+/.claude/

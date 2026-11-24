@@ -3,7 +3,7 @@
 // Design Ref: §3.5, §4.4 — 설정 화면의 백업: 내보내기(파일 저장)와 가져오기(파일 선택 → 형식 확인 → 덮어쓰기 확인).
 // Design Ref: §8 — 파일은 이 기기에서만 읽고 쓴다. 서버로 보내지 않는다. 가져오기는 형식과 값의 범위를 확인한 뒤에만 반영한다.
 import { useRef, useState, useSyncExternalStore, type ChangeEvent } from "react";
-import { backupFileName, createBackup, parseBackup } from "@/lib/backup";
+import { backupFileName, createBackup, MAX_BACKUP_FILE_BYTES, parseBackup } from "@/lib/backup";
 import {
   getAppDataSnapshot,
   getServerAppDataSnapshot,
@@ -83,6 +83,12 @@ export default function BackupPanel() {
     setPending(null);
     setResult(null);
     if (file === undefined) {
+      return;
+    }
+
+    // 너무 큰 파일은 읽기 전에 거른다. (실수로 아주 큰 파일을 골라 화면이 멈추는 것을 막는다.)
+    if (file.size > MAX_BACKUP_FILE_BYTES) {
+      setResult({ type: "error", text: "이 파일은 운동될까 백업이 아니에요. (파일이 너무 커요)" });
       return;
     }
 
