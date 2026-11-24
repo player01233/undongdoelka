@@ -1,36 +1,82 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 운동될까
 
-## Getting Started
+> 공강에 운동을 갈 수 있는지, **지난번에 실제로 걸린 이동·환복·샤워 시간**을 바탕으로 알려 주는 나 혼자용 웹 앱
 
-First, run the development server:
+공강이 생기면 "운동 갈까 말까"를 매번 감으로 정하다가 수업에 늦거나, 시간이 남는데도 포기하곤 했습니다.
+**운동될까**는 내 시간표에서 공강을 찾아 주고, 이동·환복·샤워에 실제로 걸린 시간의 평균으로 필요한 시간을 계산해
+**다음 수업 10분 전까지 돌아올 수 있는지** "된다 / 안 된다"로 알려 줍니다.
+
+- 대상: 공강에 운동을 갈지 고민하는 대학생 1명 (로그인 없음, 혼자 사용)
+- 데이터: 전부 **내 브라우저 안에만 저장**됩니다. 서버로 보내지 않습니다.
+
+## 배포 주소
+
+- 사이트: (배포 후 채워집니다)
+
+## 주요 기능
+
+| 화면 | 하는 일 |
+|------|---------|
+| **홈** | 오늘의 공강을 고르면 **최대 운동 시간**이 나오고, 운동 시간을 넣으면 "된다/안 된다"와 계산 근거(가는 이동·환복·운동·샤워·오는 이동, 남는 시간)를 보여 줍니다. |
+| **일정** | 요일·시작·종료·매주 반복으로 기본 시간표를 입력합니다. 일정이 바뀐 날은 **그날만** 고칠 수 있고, 다음 주 같은 요일에는 기본 일정으로 돌아갑니다. |
+| **기록** | 운동 후 실제로 걸린 시간 4가지와 제시간 복귀 여부를 기록합니다. 이번 주 운동 횟수와 제시간 복귀 비율을 보고, 가장 최근 기록 1건은 수정·삭제할 수 있습니다. |
+| **설정** | 이동·환복·샤워 초기값을 입력하고, 일정·기록을 파일로 **내보내기·가져오기**(백업)합니다. 7일이 지나면 홈에 백업 안내가 뜹니다. |
+
+## 판정 규칙
+
+- 공강은 같은 날 수업 사이의 빈 시간입니다. 지금이 공강 안이면 현재 시각부터 남은 시간으로 계산합니다.
+- 필요한 시간 = `가는 이동 + 환복 + 운동 + 샤워 + 오는 이동`
+- 남는 시간 = `공강 길이 − 필요한 시간` → **10분 이상이면 "된다"**, 아니면 "안 된다"
+- 이동·환복·샤워·오는 이동은 항목마다 **최근 기록 5회의 평균**(소수점 올림)을 씁니다.
+  "특이 상황" 기록과 0분(생략한 날)은 평균에서 빼고, 평균에 쓸 기록이 없을 때만 처음에 입력한 초기값을 씁니다.
+- 평소 값과 15분 이상 차이 나는 입력은 저장 전에 한 번 더 확인합니다.
+- 판정은 AI가 짐작하지 않고 위 규칙대로 계산합니다. 같은 입력이면 항상 같은 결과가 나옵니다.
+
+## 사용 순서
+
+1. **설정**에서 이동·환복·샤워·오는 이동 초기값을 입력합니다.
+2. **일정**에서 수업 시간표를 입력합니다.
+3. **홈**에서 공강을 고르고 운동 시간을 넣어 "된다/안 된다"를 확인합니다.
+4. 운동 후 **기록**에 실제로 걸린 시간을 입력합니다. (홈의 "운동 끝나고 기록하기" 버튼으로 이동하면 그때의 판정이 함께 저장됩니다.)
+5. 가끔 **설정**에서 백업 파일을 내보냅니다.
+
+## 개인정보와 보안
+
+- 수업 시간표와 운동 기록은 이 기기의 브라우저(localStorage)에만 저장되며, 서버 전송·분석 도구·외부 스크립트가 없습니다.
+- 이름·연락처·학번 같은 식별 정보는 받지 않습니다.
+- 내보낸 백업 파일에는 수업 일정이 들어 있으니 **비공개로 보관**하고 인터넷에 올리지 마세요.
+  (`undongdoelka-backup-*.json`은 `.gitignore`로 막혀 있습니다.)
+- 보안 응답 헤더(CSP 등)를 적용했고, 가져오기 파일은 형식과 값의 범위를 확인한 뒤에만 반영합니다.
+- API 키나 비밀 값은 사용하지 않습니다. (`.env`는 저장소에 올리지 않습니다.)
+
+## 기술
+
+Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS 4 · ESLint, 배포는 Vercel.
+외부 라이브러리나 데이터베이스 없이 브라우저 기본 기능만 사용합니다.
+
+## 직접 실행하기
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev      # http://localhost:3000
+npm run lint     # 코드 검사
+npm run build    # 배포용 빌드
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 폴더 구조
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```
+app/          화면 (홈 · 일정 · 기록 · 설정)
+components/   화면 부품
+lib/          계산 규칙·저장·백업 (화면과 분리된 순수 함수)
+types/        데이터 모양
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## 기획·설계 문서
 
-## Learn More
+이 프로젝트는 문서를 먼저 쓰고 그 순서대로 만들었습니다.
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- [PRD.md](PRD.md) — 기획서: 문제, 목표, 기능, 범위, 보안
+- [PLAN.md](PLAN.md) — 계획서: 작업 순서, 요구사항, 위험
+- [DESIGN.md](DESIGN.md) — 설계서: 화면, 데이터 흐름, 오류 처리, 테스트 예시
+- [CLAUDE.md](CLAUDE.md) — 작업 규칙
